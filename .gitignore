@@ -1,0 +1,6 @@
+Phenikaa_Campus_Courier_2026/
+*.pt
+*.pth
+__pycache__/
+scene_preview.png
+/tmp/
