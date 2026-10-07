@@ -27,12 +27,23 @@ lm=models.mobilenet_v3_small(weights=None); lm.classifier[3]=nn.Linear(lm.classi
 rb=models.mobilenet_v3_small(weights=None); rb.classifier[3]=nn.Linear(rb.classifier[3].in_features,5); rb.load_state_dict(torch.load('/mnt/hdd2/qtech/Phenika-AI/solution/cv/robot_mobilenet.pt',map_location=dev)); rb=rb.to(dev).eval()
 wx=models.mobilenet_v3_small(weights=None); wx.classifier[3]=nn.Linear(wx.classifier[3].in_features,2); wx.load_state_dict(torch.load('/mnt/hdd2/qtech/Phenika-AI/solution/cv/weather_img.pt',map_location=dev)); wx=wx.to(dev).eval()
 st=models.mobilenet_v3_small(weights=None); st.classifier[3]=nn.Linear(st.classifier[3].in_features,2); st.load_state_dict(torch.load('/mnt/hdd2/qtech/Phenika-AI/solution/cv/stairs_mobilenet.pt',map_location=dev)); st=st.to(dev).eval()
+owd=models.mobilenet_v3_small(weights=None); owd.classifier[3]=nn.Linear(owd.classifier[3].in_features,3); owd.load_state_dict(torch.load('/mnt/hdd2/qtech/Phenika-AI/solution/cv/oneway_dir.pt',map_location=dev)); owd=owd.to(dev).eval()
+TF128=transforms.Compose([transforms.Resize((64,128)),transforms.ToTensor()])
 import sys as _sys; _sys.path.insert(0,'/mnt/hdd2/qtech/Phenika-AI/solution/cv')
 from train_siamese import Siam2
 siam=Siam2().to(dev); siam.load_state_dict(torch.load('/mnt/hdd2/qtech/Phenika-AI/solution/cv/siamese_mlp.pt',map_location=dev)); siam=siam.to(dev).eval()
 ROAD_ORDER=['normal','crowded','covered','closed']
 test_pred=json.loads(pathlib.Path('/mnt/hdd2/qtech/Phenika-AI/solution/nlp/test_missions_pred.json').read_text(encoding='utf-8'))
+test_gref=json.loads(pathlib.Path('/mnt/hdd2/qtech/Phenika-AI/solution/nlp/test_gref_pred.json').read_text(encoding='utf-8'))
 te_obs=json.loads((BASE/'test/observations.json').read_text(encoding='utf-8'))
+def resolve_ref_nsew(goal_nodes, kind):
+    # goal_nodes: list rc; kind north/south/east/west ( Bac=tren=min row)
+    if not goal_nodes or kind not in ('north','south','east','west'): return None
+    if kind=='north': return min(goal_nodes, key=lambda rc:(rc[0],rc[1]))
+    if kind=='south': return max(goal_nodes, key=lambda rc:(rc[0],rc[1]))
+    if kind=='west': return min(goal_nodes, key=lambda rc:(rc[1],rc[0]))
+    if kind=='east': return max(goal_nodes, key=lambda rc:(rc[1],rc[0]))
+    return None
 import sys; sys.path.insert(0,'/tmp/opencode')
 from multileg import best_first_multileg
 REL={('UP',0):0,('UP',3):1,('UP',2):2,('UP',1):3,('DOWN',1):0,('DOWN',2):1,('DOWN',3):2,('DOWN',0):3,('LEFT',2):0,('LEFT',0):1,('LEFT',1):2,('LEFT',3):3,('RIGHT',3):0,('RIGHT',1):1,('RIGHT',0):2,('RIGHT',2):3}
@@ -129,9 +140,9 @@ with torch.no_grad():
             for dr,dc in [(-1,0),(1,0),(0,-1),(0,1)]:
                 nb=(r+dr,c+dc)
                 if nb in rcset:
-                    # tranh lap
-                    if ((nb,(r,c)) in [(p[1],p[0]) for p in pairs]): continue
-                    pairs.append(((r,c),nb))
+                    a,b=sorted([(r,c),nb])
+                    if (a,b) in [(p[0],p[1]) for p in pairs]: continue
+                    pairs.append((a,b))
         edge_list=[]
         if pairs:
             ecrops=[]; epts=[]
@@ -144,6 +155,16 @@ with torch.no_grad():
             pstairs=[]
             for j in range(0,len(eb),64):
                 pstairs+=st(eb[j:j+64]).argmax(1).cpu().tolist()
+            # oneway direction (a<b sorted, 0=2chieu 1=a->b 2=b->a)
+            owcrops=[]
+            for (a,b) in pairs:
+                (x1,y1)=rc2xy[a]; (x2,y2)=rc2xy[b]
+                mx,my=(x1+x2)/2,(y1+y2)/2
+                owcrops.append(TF128(im.crop((max(0,int(mx-32)),max(0,int(my-64)),min(w0,int(mx+32)),min(h0,int(my+64))))))
+            ob=torch.stack(owcrops).to(dev)
+            pow_=[]
+            for j in range(0,len(ob),64):
+                pow_+=owd(ob[j:j+64]).argmax(1).cpu().tolist()
             # Learned Siamese: neu du 4 swatches thi dung MLP, else fallback meanRGB
             use_learned = all(k in sw_tensors for k in ROAD_ORDER)
             if use_learned:
@@ -153,17 +174,28 @@ with torch.no_grad():
                     be = eb[j:j+32]
                     sws = sw_batch.unsqueeze(0).repeat(len(be), 1, 1, 1, 1)
                     pstatus += siam(be, sws).argmax(1).cpu().tolist()
-                for ((crop, a, b), sti, psi) in zip(epts, pstairs, pstatus):
-                    edge_list.append({'a': list(a), 'b': list(b), 'status': ROAD_ORDER[psi], 'stairs': bool(sti), 'oneway_to': None})
+                for ((crop, a, b), sti, psi, pows) in zip(epts, pstairs, pstatus, pow_):
+                    ow_to = list(b) if pows==1 else (list(a) if pows==2 else None)
+                    edge_list.append({'a': list(a), 'b': list(b), 'status': ROAD_ORDER[psi], 'stairs': bool(sti), 'oneway_to': ow_to})
             else:
                 for (crop,a,b),sti in zip(epts,pstairs):
-                    # fallback mean RGB
+                    # fallback mean RGB (oneway assume 2 chieu)
                     em=mean_rgb(crop)
                     bestk=None; bestd=None
                     for k,sm in sw_mean.items():
                         d=float(((em-sm)**2).sum())
                         if bestd is None or d<bestd: bestd=d; bestk=k
                     edge_list.append({'a':list(a),'b':list(b),'status':bestk or 'normal','stairs':bool(sti),'oneway_to':None})
+        # ref N/S/E/W: loc goal dups theo kind (near/far/NONE giu min-cost)
+        gkind = test_gref[si] if si < len(test_gref) else 'NONE'
+        _rc2lm = dict(rc2lm)
+        _goal_nodes = [rc for rc,t in _rc2lm.items() if t==mission['goal']]
+        _resolved = resolve_ref_nsew(_goal_nodes, gkind)
+        if _resolved is not None:
+            _rc2lm = {rc:(mission['goal'] if rc==_resolved else t) if t==mission['goal'] else t for rc,t in _rc2lm.items()}
+            # xoa cac ban goal khac ref (giu duy nhat resolved)
+            _rc2lm = {rc:t for rc,t in _rc2lm.items() if not (t==mission['goal'] and rc!=_resolved)}
+            rc2lm = _rc2lm
         fake={'nodes':[],'edges':edge_list,'landmarks':[{'type':t,'rc':list(rc)} for rc,t in rc2lm.items()],'robot':{'rc':list(robot_rc),'heading':robot_hd},'weather':wthr,'mission':{'goal':mission['goal'],'goal_ref':None,'via':mission['via'],'via_ref':None,'urgent':mission['urgent'],'fragile':mission['fragile']}}
         for rid in range(10):
             if rid==9:
@@ -182,6 +214,7 @@ with torch.no_grad():
                         if (tuple(e['a'])==robot_rc and tuple(e['b'])==nxt) or (tuple(e['b'])==robot_rc and tuple(e['a'])==nxt):
                             found=e; break
                     if found and (found['status']=='closed' or found['stairs']): continue
+                    if found and found.get('oneway_to') is not None and tuple(found['oneway_to'])!=nxt: continue
                     d=abs(nxt[0]-tgt[0])+abs(nxt[1]-tgt[1]);k=(d,REL[(robot_hd,a)])
                     if bk is None or k<bk: bk=k;bestm=a
                 preds.append(int(bestm) if bestm is not None else 2)
@@ -190,5 +223,5 @@ with torch.no_grad():
                 p=best_first_multileg(fake,fn,tc,leg)
                 preds.append(int(p) if p is not None else 2)
         if (si+1)%200==0: print(f'done {si+1}/1200',flush=True)
-pathlib.Path('/mnt/hdd2/qtech/Phenika-AI/solution/predictions_siamese_learned.json').write_text(json.dumps(preds))
-print(f'saved siamese-learned {len(preds)}')
+pathlib.Path('/mnt/hdd2/qtech/Phenika-AI/solution/predictions_full.json').write_text(json.dumps(preds))
+print(f'saved full-oneway-ref {len(preds)}')
