@@ -133,16 +133,17 @@ Multi-task trên `mission.text`: `goal(10) / via(11 gồm null) / urgent / fragi
 
 ---
 
-## 3. Model sẽ dùng (tổng ≤200M)
+## 3. Model sẽ dùng (tổng ≤200M, đã check server)
 
-| Khâu | Model | Params ước tính | Vai trò |
+Server: 2x RTX A4000 16GB + 1x RTX 2070S 8GB (2 card bận, còn 1x A4000 ~11GB trống), 48 CPU, RAM free ~32GB, disk free 559GB, HF net OK. Train từng module riêng + fp16, dùng `CUDA_VISIBLE_DEVICES=<card trống>`.
+
+| Khâu | Model chốt | Params ước tính | Vì sao chọn |
 |---|---|---|---|
-| NLP | **PhoBERT-base-v2** + 6 head phân loại (goal, via, urgent, fragile, ref-kind, anchor) | ~135M | Hiểu tiếng Việt có/không dấu, phủ định, ref, nhiễu. Fine-tune trên `scenes[].mission`. Fallback nhẹ: TF-IDF+LogReg/BiLSTM nếu thiếu GPU |
-| CV-nodes | **UNet + MobileNetV3-Small encoder** (heatmap 1 kênh) | ~6M | Tìm tâm giao lộ `xy` |
-| CV-edges/status | **MobileNetV3-Large** chia sẻ backbone + 3 head (status4, stairs1, oneway3) + nhánh **Siamese** so edge-crop vs legend-swatch | ~8M | Đọc trạng thái đường, chịu swap chú giải |
-| CV-landmark/robot/weather | **MobileNetV3-Large** (hoặc ResNet18) multi-head: landmark11 (10+none), robot-heading4, weather2 | ~8M | Nhận địa điểm, vị trí+hướng robot, thời tiết |
-| Policy | **Dijkstra/A* + trọng số học được** (không phải neural, 0 params) hoặc **GNN 2-layer** tiny (<1M) nếu muốn học end-to-end | ~0–1M | Mô phỏng 10 chiến thuật, phá hòa theo heading |
+| NLP | **`vinai/phobert-base-v2` ~135M** + 6 head (goal/via/urgent/fragile/ref-kind/anchor) | ~135M | Xịn nhất tiếng Việt mà vẫn vừa budget. `PhoBERT-large` 355M và `XLM-R-base` 270M đều vượt 200M. Mini/distil yếu với phủ định + diễn đạt mới + không dấu. Augment bỏ dấu + typo. Train ~2-3h, batch 32 fp16 |
+| CV-detect | **`YOLOv8-s` ~11M** | ~11M | Detect tâm giao lộ, landmark, robot + heading, `weather_box`, legend-swatch. Thay UNet rời rạc cũ, 1 model đa nhiệm nhanh hơn |
+| CV-classify | **`EfficientNet-B0` ~5M shared** + 3 head (status4/stairs/oneway3) + nhánh **Siamese ~3M** so edge-crop vs legend-swatch | ~8M | Nhẹ, train tốt trên ~100k edge-crop, ít overfit 4 style. Siamese bắt buộc để xử `road_look` swap (30-35% val/test). Option xịn hơn: `Swin-Tiny` 28M, tổng vẫn <200M |
+| Policy | **Dijkstra/A* + trọng số học grid-search** | 0 | Chuẩn nhất với 2000 scenes, học `w_crowded/w_covered/w_turn` + luật phá hòa theo heading từ 10 robot cùng cảnh. Hơn GNN về interpret |
 
-Tổng infer: ~135 + 6 + 8 + 8 ≈ **157M < 200M** ✅. Không gọi API ngoài. Toàn bộ train trên train (+val để early-stop), cấm dùng test.
+Tổng infer: ~135 + 11 + 8 ≈ **~155M < 200M** ✅. Không gọi API ngoài. Toàn bộ train trên train (+val early-stop), cấm dùng test.
 
-**Lộ trình:** simulator oracle → NLP → CV → tích hợp → pseudo-check val macro → sinh test `predictions.json`.
+**Lộ trình:** simulator oracle → NLP PhoBERT → CV EfficientNet/YOLO → tích hợp → pseudo-check val macro (baseline majority 0.266, bất đồng train 89% / val 97%) → sinh test `predictions.json`.
