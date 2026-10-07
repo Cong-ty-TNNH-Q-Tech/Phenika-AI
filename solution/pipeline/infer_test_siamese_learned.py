@@ -44,6 +44,19 @@ def resolve_ref_nsew(goal_nodes, kind):
     if kind=='west': return min(goal_nodes, key=lambda rc:(rc[1],rc[0]))
     if kind=='east': return max(goal_nodes, key=lambda rc:(rc[1],rc[0]))
     return None
+import sys as _sys2; _sys2.path.insert(0,'/mnt/hdd2/qtech/Phenika-AI/solution/nlp')
+from anchor_rule_v2 import predict_anchor as _predict_anchor
+def resolve_ref_nearfar(goal_nodes, kind, text, goal, via, landmarks):
+    # landmarks: list dict {type,rc} (detected). anchor phai single.
+    if not goal_nodes or kind not in ('near','far') or len(goal_nodes)<2: return None
+    anc = _predict_anchor(text, goal, via, landmarks)
+    if not anc: return None
+    anc_nodes=[lm['rc'] for lm in landmarks if lm['type']==anc]
+    if len(anc_nodes)!=1: return None
+    ax,ay=anc_nodes[0][0],anc_nodes[0][1]
+    import math
+    if kind=='near': return min(goal_nodes,key=lambda rc:math.hypot(rc[0]-ax,rc[1]-ay))
+    return max(goal_nodes,key=lambda rc:math.hypot(rc[0]-ax,rc[1]-ay))
 import sys; sys.path.insert(0,'/tmp/opencode')
 from multileg import best_first_multileg
 REL={('UP',0):0,('UP',3):1,('UP',2):2,('UP',1):3,('DOWN',1):0,('DOWN',2):1,('DOWN',3):2,('DOWN',0):3,('LEFT',2):0,('LEFT',0):1,('LEFT',1):2,('LEFT',3):3,('RIGHT',3):0,('RIGHT',1):1,('RIGHT',0):2,('RIGHT',2):3}
@@ -186,14 +199,15 @@ with torch.no_grad():
                         d=float(((em-sm)**2).sum())
                         if bestd is None or d<bestd: bestd=d; bestk=k
                     edge_list.append({'a':list(a),'b':list(b),'status':bestk or 'normal','stairs':bool(sti),'oneway_to':None})
-        # ref N/S/E/W: loc goal dups theo kind (near/far/NONE giu min-cost)
+        # ref N/S/E/W + near/far (NONE giu min-cost)
         gkind = test_gref[si] if si < len(test_gref) else 'NONE'
         _rc2lm = dict(rc2lm)
         _goal_nodes = [rc for rc,t in _rc2lm.items() if t==mission['goal']]
         _resolved = resolve_ref_nsew(_goal_nodes, gkind)
+        if _resolved is None and gkind in ('near','far') and len(_goal_nodes)>=2:
+            _lm_list=[{'type':t,'rc':list(rc)} for rc,t in _rc2lm.items()]
+            _resolved = resolve_ref_nearfar(_goal_nodes, gkind, te_obs[si*10]['mission'], mission['goal'], mission['via'], _lm_list)
         if _resolved is not None:
-            _rc2lm = {rc:(mission['goal'] if rc==_resolved else t) if t==mission['goal'] else t for rc,t in _rc2lm.items()}
-            # xoa cac ban goal khac ref (giu duy nhat resolved)
             _rc2lm = {rc:t for rc,t in _rc2lm.items() if not (t==mission['goal'] and rc!=_resolved)}
             rc2lm = _rc2lm
         fake={'nodes':[],'edges':edge_list,'landmarks':[{'type':t,'rc':list(rc)} for rc,t in rc2lm.items()],'robot':{'rc':list(robot_rc),'heading':robot_hd},'weather':wthr,'mission':{'goal':mission['goal'],'goal_ref':None,'via':mission['via'],'via_ref':None,'urgent':mission['urgent'],'fragile':mission['fragile']}}
@@ -223,5 +237,5 @@ with torch.no_grad():
                 p=best_first_multileg(fake,fn,tc,leg)
                 preds.append(int(p) if p is not None else 2)
         if (si+1)%200==0: print(f'done {si+1}/1200',flush=True)
-pathlib.Path('/mnt/hdd2/qtech/Phenika-AI/solution/predictions_full.json').write_text(json.dumps(preds))
-print(f'saved full-oneway-ref {len(preds)}')
+pathlib.Path('/mnt/hdd2/qtech/Phenika-AI/solution/predictions_full_ref.json').write_text(json.dumps(preds))
+print(f'saved full-ref-nearfar {len(preds)}')
