@@ -1,4 +1,7 @@
 Phenikaa_Campus_Courier_2026/
+data/
+.venv/
+artifacts/
 *.pt
 *.pth
 __pycache__/

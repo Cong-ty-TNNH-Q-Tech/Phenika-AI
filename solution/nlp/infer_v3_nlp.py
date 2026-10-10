@@ -15,9 +15,11 @@ def infer(texts, model_path):
             pg,pv,pu,pf,pr,pra,pvr,pva=m(enc)
             for j in range(len(b)):
                 vi=pv[j].argmax().item(); ri=pr[j].argmax().item(); ai=pra[j].argmax().item()
+                vri=pvr[j].argmax().item(); vai=pva[j].argmax().item()
                 outs.append({'goal':LABELS[pg[j].argmax().item()],'via':(LABELS[vi] if vi<10 else None),
                     'urgent':bool(pu[j].argmax().item()),'fragile':bool(pf[j].argmax().item()),
-                    'gref_kind':REFS[ri],'gref_anchor':(LABELS[ai] if ai<10 else None)})
+                    'gref_kind':REFS[ri],'gref_anchor':(LABELS[ai] if ai<10 else None),
+                    'via_ref_kind':VREFS[vri],'via_ref_anchor':(LABELS[vai] if vai<10 else None)})
     return outs
 if __name__=='__main__':
     import argparse

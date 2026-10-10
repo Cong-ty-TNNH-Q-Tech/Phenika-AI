@@ -1,0 +1,12 @@
+{
+  "source_submission_sha256": "225ebc610694c5040ec9a6511c1a8826aafc6e30e05220109e7324c405df20d2",
+  "candidate_sha256": "1214c0553e2f03c618c817ac70345fbef6fda18483e9bcdd7ee7e3108b835678",
+  "candidate_artifact_sha256": "be09a275b08241cc497eccbff9aae6a0e676fd0ca3c17f562ddd31f2832e2c36",
+  "candidate_hash_encoding": "Git blob bytes / LF line endings",
+  "rows": 12000,
+  "changed_rows": 340,
+  "validation_report": "refiner_metrics.json",
+  "training_split": "train",
+  "selection_split": "validation",
+  "test_usage": "frozen automatic inference only; no manual test inspection or training"
+}

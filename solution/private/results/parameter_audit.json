@@ -1,0 +1,14 @@
+{
+  "nodes": 41352281,
+  "legend": 41377906,
+  "landmark": 11182155,
+  "edge": 11178564,
+  "presence": 11177538,
+  "robot": 1522981,
+  "weather": 1519906,
+  "stairs": 1519906,
+  "oneway": 1520931,
+  "siamese": 927010,
+  "cv_total": 123279178,
+  "with_phobert_135m_estimate": 258279178
+}

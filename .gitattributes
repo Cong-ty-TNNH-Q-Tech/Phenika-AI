@@ -1,0 +1,2 @@
+# Keep published JSON bytes stable for submission SHA256 checks on Windows.
+solution/private/results/*.json text eol=lf

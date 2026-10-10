@@ -50,9 +50,9 @@ class Siam(nn.Module):
         return logits
 # Viet gon: dung prototype matching co hoc scale/shift tren cosine
 class Siam2(nn.Module):
-    def __init__(self):
+    def __init__(self, pretrained=True):
         super().__init__()
-        b=models.mobilenet_v3_small(weights='IMAGENET1K_V1')
+        b=models.mobilenet_v3_small(weights='IMAGENET1K_V1' if pretrained else None)
         self.feat=nn.Sequential(b.features,b.avgpool,nn.Flatten())
         self.scale=nn.Parameter(torch.tensor(10.0)); self.bias=nn.Parameter(torch.tensor(0.0))
     def forward(self,edge,sws):

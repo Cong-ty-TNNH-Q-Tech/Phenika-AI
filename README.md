@@ -2,6 +2,23 @@
 
 > Robot sẽ đi hướng nào? Bài thi AI Hackathon kết hợp CV + NLP + học chiến thuật từ dữ liệu.
 
+## Cập nhật private v3
+
+Phần dưới giữ tài liệu pipeline ban đầu. Bộ tối ưu private v3, lệnh chạy local
+và giới hạn đã xác minh nằm trong [solution/private/README.md](solution/private/README.md)
+và [TOP3_PLAN.md](TOP3_PLAN.md).
+
+- Refiner trên validation end-to-end đã lưu: **64.67% -> 65.37%**.
+- Ranker trên graph/mission thật: **72.93% -> 78.10%**; không phải điểm E2E.
+- [File nộp thử](solution/private/results/predictions_refined_test.json) có 12,000
+  nhãn; không ghi đè submission gốc. Đây là ứng viên thử nghiệm, chưa bảo đảm
+  hướng sửa hợp lệ nếu không có graph dự đoán.
+- E2E CV/ranker mới chưa đo do thiếu checkpoint. Detector gộp đã có mã nhưng
+  chưa train; budget toàn pipeline hiện tại chưa được xác nhận đạt 200M.
+
+Không có kết quả chứng minh đạt top 3. Data, môi trường và checkpoint không
+được đưa vào Git; các [báo cáo đo](solution/private/results/) được lưu để đối chiếu.
+
 ## 1. Yêu cầu đề bài
 
 ### 1.1. Input / Output
