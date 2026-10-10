@@ -1,23 +1,29 @@
-# Full dự án — chạy từ đầu tới predictions.json
+# Phenikaa Campus Courier — pipeline v6 (val end-to-end 64.80%)
+
+Dự đoán bước đi đầu tiên (UP/DOWN/LEFT/RIGHT) cho 10 robot từ ảnh bản đồ + mission tiếng Việt.
+Điểm = macro accuracy 10 robot. Baseline majority 26.6%.
 
 ## Cấu trúc
-- `oracle/`: simulator Dijkstra + tie-break F>R>L>B, weights R0-R9, `val_oracle_true_nlp.py` (val 85.4%), `sim_all_oracle.py` (train 88.7%).
-- `nlp/`: `nlp_tfidf_baseline.py` (goal 64%, urgent/fragile 84-86%), `train_phobert.py` (PhoBERT-base-v2 135M multitask, chạy GPU2), `review_val_tfidf_oracle.py` (val end-to-end 67.8%).
-- `cv/`: `gen_crops_stats.py` (121k train edges), `train_edge.py` (EfficientNet-B0 + Siamese legend).
-- `pipeline/infer_test.py`: sinh `predictions.json` 12k đúng format BTC.
-- `predictions.json`: bản nộp v1 (majority, val 26.6%, an toàn). `predictions_v1.json`: thử nghiệm stat (val 25.6%, không dùng).
-- `REVIEW.md`: số liệu 3 vòng review.
+- `oracle/policy_v5.py` — simulator Dijkstra + turn-cost + tie-break theo robot + greedy R9. Per-robot costs fit trên train-oracle, có conditional splits (R1-style, R3-goal, R5-style). Xem REVIEW chi tiết.
+- `nlp/` — `train_phobert_v3.py` (PhoBERT-base-v2 multitask) + `nlp_rules.py` (rule gref_kind + anchor từ alias mined-train, single-instance, negation). Missions: `v3_validation/test_missions.json` (PhoBERT) + rules áp lúc infer.
+- `cv/` — FRCNN nodes/legend, ResNet18 landmark/edge, MobileNet robot/weather/stairs/oneway, Siamese legend-swap. Models `.pt` (git-ignored, train local).
+- `pipeline/infer_val_v5.py` — chấm val end-to-end (CV + NLP hybrid + v5 + night-detect). `infer_test_v5.py` — sinh test.
+- `predictions.json` — bản nộp test 12000 (v6). `predictions_v5_val.json` — val 3000 (64.80%).
+
+## Số đo thực (không ước lượng)
+- Oracle (true graph + true mission): **train 77.82% / val 72.93%**.
+- True-graph + improved NLP: **66.97%**. Pred-graph + true mission: 66.33%. → NLP cost +6.0, CV cost +2.2 (ablation A/B/C/D).
+- End-to-end val (CV+NLP+v6): **64.80%** (v3 cũ 58.07%). Per-robot: R0 .777, R1 .630, R2 .620, R3 .640, R4 .587, R5 .707, R6 .660, R7 .607, R8 .587, R9 .667.
 
 ## Chạy
 ```bash
-python solution/nlp/nlp_tfidf_baseline.py
-CUDA_VISIBLE_DEVICES=2 python solution/nlp/train_phobert.py --epochs 5
-python solution/cv/gen_crops_stats.py
-CUDA_VISIBLE_DEVICES=2 python solution/cv/train_edge.py --epochs 8
-python solution/pipeline/infer_test.py --data Phenikaa_Campus_Courier_2026/Phenikaa_Campus_Courier_2026/delivery_public --out solution/predictions.json
-python Phenikaa_Campus_Courier_2026/Phenikaa_Campus_Courier_2026/starter/starter.py --data ... --out /tmp/pred.json  # check val
+# val end-to-end (cần models .pt + v3 missions)
+CUDA_VISIBLE_DEVICES=1 python3 solution/pipeline/infer_val_v5.py
+# test -> predictions.json
+CUDA_VISIBLE_DEVICES=1 python3 solution/pipeline/infer_test_v5.py && cp solution/predictions_v5_test.json solution/predictions.json
 ```
 
-## Điểm hiện tại (val)
-- Majority: 26.6%. Oracle TRUE NLP: 85.4%. Oracle + TF-IDF: 67.8%. Không CV: 25.6%.
-- Tiếp: PhoBERT (goal 64%→85%+), crack R4/R5/R8, CV SiameseDialog để lên 75%+ end-to-end.
+## Ghi chú trung thực
+- Policy chưa crack triệt để (R0 failures 100% là ties; R1-detours không khớp feature nào đã thử; nhiều family/ML-rankers đã thử và thua hand-Dijkstra trên val). Ba conditional splits (R1-night→base, R3-goal-GLL→turns, R5-night→base) là gains lớn cuối cùng tìm được (+2.5% oracle).
+- NLP rules (kind 87%, anchor 71%) thắng PhoBERT ở các trường đó; goal/via giữ PhoBERT. via_ref chưa xử lý (rule thử chỉ 40% val).
+- Muốn 70% cần biến cost mới cho ties/detours hoặc retrain CV lớn — ngoài phạm vi bản này.

@@ -38,6 +38,7 @@ def run(epochs=4,bs=128,ntr=20000,nva=4000):
     n_params=sum(p.numel() for p in m.parameters())
     print(f'ResNet18 params={n_params/1e6:.1f}M',flush=True)
     m=m.to(dev); opt=torch.optim.Adam(m.parameters(),lr=1e-3); ce=nn.CrossEntropyLoss()
+    best=-1; save='/mnt/hdd2/qtech/Phenika-AI/solution/cv/edge_resnet18.pt'
     for ep in range(epochs):
         m.train(); tot=0
         for x,y in ltr:
@@ -48,9 +49,11 @@ def run(epochs=4,bs=128,ntr=20000,nva=4000):
         with torch.no_grad():
             for x,y in lva:
                 x=x.to(dev); hit+=(m(x).argmax(1).cpu()==y).sum().item(); tot2+=len(y)
-        print(f' val edge-status ResNet18={hit/tot2:.4f} (n={tot2})',flush=True)
-    torch.save(m.state_dict(),'/mnt/hdd2/qtech/Phenika-AI/solution/cv/edge_resnet18.pt')
-    print('saved solution/cv/edge_resnet18.pt',flush=True)
+        acc=hit/tot2
+        print(f' val edge-status ResNet18={acc:.4f} (n={tot2})',flush=True)
+        if acc>best:
+            best=acc; torch.save(m.state_dict(),save); print(f'  saved best={best:.4f}',flush=True)
+    print('best val edge-status',round(best,4),'->',save,flush=True)
 if __name__=='__main__':
     import argparse
     ap=argparse.ArgumentParser(); ap.add_argument('--epochs',type=int,default=4)

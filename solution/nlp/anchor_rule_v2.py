@@ -21,7 +21,7 @@ def predict_anchor(text, goal, via, landmarks):
     cnt=Counter(lm['type'] for lm in landmarks)
     cands=[]
     # tim pattern gan/xa/sat/cach xa + alias trong 40 ky tu sau
-    for m in re.finditer(r'(gan|xa|sat|cach xa|sat |man duoi|man tren)\b',t):
+    for m in re.finditer(r'(gan|xa|sat|canh|ke|kề|cach xa|nam sat|nam canh|sat |man duoi|man tren)\b',t):
         window=t[m.end():m.end()+40]
         for k,als in ALIASES.items():
             if k in (goal,via): continue
